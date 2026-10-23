@@ -71,8 +71,8 @@ function newTest() {
   if (load(KEY, null) && !confirm("Discard the test in progress?")) return;
   const ids = shuffle(QUESTIONS.map((q) => q.id)).slice(0, N);
   t = {
-    items: ids.map((id) => ({ id, order: shuffle([0, 1, 2, 3]) })),
-    answers: Array(N).fill(null), // original option index, so scoring ignores the shuffle
+    items: ids.map((id) => ({ id, order: [0, 1, 2, 3] })), // options stay in PDF order
+    answers: Array(N).fill(null), // original option index
     marked: Array(N).fill(false),
     times: Array(N).fill(0),
     cur: 0,
