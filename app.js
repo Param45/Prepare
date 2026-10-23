@@ -35,9 +35,24 @@ function shuffle(a) {
   return a;
 }
 
+// Motion is optional: without it (CDN down), with reduced motion, or in a background tab
+// (frames are paused there, which would leave content stuck half-faded), everything just appears.
+const M = window.Motion;
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
+const canAnimate = () => M && !reduceMotion.matches && !document.hidden;
+const SPRING = { type: "spring", bounce: 0.18, visualDuration: 0.38 };
+function anim(els, keyframes, opts) {
+  if (!canAnimate() || !els || els.length === 0) return;
+  M.animate(els, keyframes, { ...SPRING, ...opts });
+}
+const stagger = (gap, start = 0) => (M ? M.stagger(gap, { startDelay: start }) : 0);
+
 function show(id) {
   for (const s of document.querySelectorAll(".screen")) s.hidden = s.id !== id;
   window.scrollTo(0, 0);
+  const sec = $(`#${id}`);
+  // The test screen animates per question instead (and its bars are position: fixed/sticky).
+  if (id !== "test") anim([...sec.children].filter((c) => !c.hidden).slice(0, 10), { opacity: [0, 1], y: [14, 0] }, { delay: stagger(0.045) });
 }
 
 /* ---------- Home ---------- */
@@ -53,6 +68,7 @@ function renderHome() {
   $("#btn-start").textContent = active ? "Discard and start new" : "Start a new test";
   $("#btn-start").classList.toggle("ghost", !!active);
   $("#btn-last").hidden = !load(LAST, null);
+  renderOrderPref();
 
   const hist = load(HIST, []);
   $("#history").hidden = !hist.length;
@@ -63,16 +79,24 @@ function renderHome() {
   show("home");
 }
 
+const SHUF = "cogquiz.shuffle";
+function renderOrderPref() {
+  const on = load(SHUF, false);
+  for (const b of $("#order-seg").children) b.setAttribute("aria-checked", (b.dataset.shuffle === "1") === on);
+}
+
 /* ---------- Test ---------- */
 
 let t = null, tick = 0, paused = false, timerId = 0;
+const isPdfOrder = (test) => test.items.every((it) => it.order.join() === "0,1,2,3");
 
 function newTest() {
   if (load(KEY, null) && !confirm("Discard the test in progress?")) return;
   const ids = shuffle(QUESTIONS.map((q) => q.id)).slice(0, N);
+  const shuffled = load(SHUF, false);
   t = {
-    items: ids.map((id) => ({ id, order: [0, 1, 2, 3] })), // options stay in PDF order
-    answers: Array(N).fill(null), // original option index
+    items: ids.map((id) => ({ id, order: shuffled ? shuffle([0, 1, 2, 3]) : [0, 1, 2, 3] })),
+    answers: Array(N).fill(null), // original option index, so scoring ignores any shuffle
     marked: Array(N).fill(false),
     times: Array(N).fill(0),
     cur: 0,
@@ -87,7 +111,7 @@ function startTest() {
   clearInterval(timerId);
   timerId = setInterval(commit, 1000);
   show("test");
-  renderQ();
+  renderQ(1);
 }
 
 // Adds time since the last tick to the question on screen and autosaves.
@@ -109,13 +133,15 @@ document.addEventListener("visibilitychange", () => {
 function go(i) {
   if (i < 0 || i >= N) return;
   commit();
+  const dir = Math.sign(i - t.cur);
   t.cur = i;
   save(KEY, t);
-  renderQ();
+  renderQ(dir || 1);
   window.scrollTo(0, 0);
 }
 
-function renderQ() {
+// dir: 1 = slide in from the right, -1 = from the left, omitted = no entrance animation.
+function renderQ(dir) {
   const item = t.items[t.cur], q = byId[item.id];
   const answered = t.answers.filter((a) => a !== null).length;
   $("#counter").textContent = `Q ${t.cur + 1} / ${N}`;
@@ -131,12 +157,28 @@ function renderQ() {
   $("#btn-mark").textContent = t.marked[t.cur] ? "Marked" : "Mark";
   $("#btn-prev").disabled = t.cur === 0;
   $("#btn-next").textContent = t.cur === N - 1 ? "Finish" : "Next";
+  if (dir) anim([$("#qtext"), ...$("#options").children], { opacity: [0, 1], x: [dir * 28, 0] }, { delay: stagger(0.035) });
 }
 
 function choose(o) {
   t.answers[t.cur] = o;
   save(KEY, t);
   renderQ();
+  if (o !== null) anim($(`.opt[data-o="${o}"]`), { scale: [0.96, 1] }, { bounce: 0.5, visualDuration: 0.3 });
+}
+
+function openSheet(d) {
+  d.showModal();
+  anim(d, { opacity: [0, 1], y: [48, 0] });
+}
+
+// Just for fun: answers B (the second PDF option) everywhere and submits immediately.
+function allB() {
+  if (!isPdfOrder(t)) return;
+  $("#palette").close();
+  if (!confirm("Mark every question as B and submit right away?")) return;
+  t.answers = t.answers.map(() => 1);
+  finish();
 }
 
 function openPalette() {
@@ -146,7 +188,9 @@ function openPalette() {
       return `<button class="${cls}" data-i="${i}" aria-label="Question ${i + 1}">${i + 1}</button>`;
     })
     .join("");
-  $("#palette").showModal();
+  $("#allb").hidden = !isPdfOrder(t);
+  openSheet($("#palette"));
+  anim([...$("#grid").children], { opacity: [0, 1], scale: [0.85, 1] }, { delay: stagger(0.006, 0.05) });
 }
 
 function openConfirm() {
@@ -156,7 +200,7 @@ function openConfirm() {
   $("#confirm-note").textContent = N - answered
     ? `${N - answered} unanswered question${N - answered > 1 ? "s" : ""} will get 0 marks. You can't change answers after submitting.`
     : "You can't change answers after submitting.";
-  $("#confirm").showModal();
+  openSheet($("#confirm"));
 }
 
 function finish() {
@@ -237,6 +281,13 @@ function renderResults(r) {
     .join("");
   renderReview("all");
   show("results");
+
+  // Count the score up, then grow the week bars and pop in the stat tiles.
+  if (canAnimate()) {
+    M.animate(0, score, { duration: 1.1, ease: [0.16, 1, 0.3, 1], onUpdate: (v) => ($("#score").textContent = Math.round(v)) });
+  }
+  anim([...$("#stats").children], { opacity: [0, 1], y: [12, 0], scale: [0.96, 1] }, { delay: stagger(0.05, 0.15) });
+  anim([...document.querySelectorAll("#weeks .bar i")], { scaleX: [0, 1] }, { delay: stagger(0.04, 0.3), bounce: 0.1, visualDuration: 0.6 });
 }
 
 function tag(x) {
@@ -264,12 +315,11 @@ const ICON = {
   moon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg>`,
   sun: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>`,
 };
-const systemDark = matchMedia("(prefers-color-scheme: dark)");
-// No saved choice means "follow the system".
-const isDark = () => (document.documentElement.dataset.theme || (systemDark.matches ? "dark" : "light")) === "dark";
+// Dark unless the user picked light.
+const isDark = () => document.documentElement.dataset.theme !== "light";
 function syncTheme() {
   const dark = isDark();
-  $('meta[name="theme-color"]').content = dark ? "#0D1821" : "#F3F8FC";
+  $('meta[name="theme-color"]').content = dark ? "#09121A" : "#F3F8FC";
   for (const b of document.querySelectorAll(".theme-toggle")) {
     b.innerHTML = dark ? ICON.sun : ICON.moon;
     b.setAttribute("aria-label", dark ? "Switch to light mode" : "Switch to dark mode");
@@ -281,9 +331,9 @@ for (const b of document.querySelectorAll(".theme-toggle")) {
     document.documentElement.dataset.theme = next;
     try { localStorage.setItem("cogquiz.theme", next); } catch {} // plain string: the <head> script reads it raw
     syncTheme();
+    anim(b, { rotate: [-90, 0], scale: [0.7, 1] });
   };
 }
-systemDark.addEventListener("change", syncTheme);
 syncTheme();
 
 /* ---------- Events ---------- */
@@ -295,7 +345,15 @@ $("#btn-last").onclick = () => renderResults(load(LAST, null));
 $("#btn-home").onclick = renderHome;
 $("#btn-prev").onclick = () => go(t.cur - 1);
 $("#btn-next").onclick = () => (t.cur === N - 1 ? openConfirm() : go(t.cur + 1));
-$("#btn-mark").onclick = () => { t.marked[t.cur] = !t.marked[t.cur]; save(KEY, t); renderQ(); };
+$("#btn-mark").onclick = () => { t.marked[t.cur] = !t.marked[t.cur]; save(KEY, t); renderQ(); anim($("#btn-mark"), { scale: [0.92, 1] }, { bounce: 0.5 }); };
+$("#btn-allb").onclick = allB;
+$("#order-seg").onclick = (e) => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  save(SHUF, b.dataset.shuffle === "1");
+  renderOrderPref();
+  anim(b, { scale: [0.94, 1] }, { bounce: 0.4 });
+};
 $("#btn-clear").onclick = () => choose(null);
 $("#btn-palette").onclick = openPalette;
 $("#btn-palette-submit").onclick = () => { $("#palette").close(); openConfirm(); };

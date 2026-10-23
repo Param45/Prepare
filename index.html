@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#F3F8FC">
+  <meta name="theme-color" content="#09121A">
   <script>try { var th = localStorage.getItem("cogquiz.theme"); if (th) document.documentElement.dataset.theme = th; } catch (e) {}</script>
   <meta name="description" content="Practice tests for NPTEL Cognition and its Computation: 50 random MCQs from weeks 1–12.">
   <title>Cognition Practice</title>
@@ -34,6 +34,14 @@
   <div id="resume" class="card resume" hidden>
     <p><b>You have a test in progress</b><br><span id="resume-info" class="muted small"></span></p>
     <button class="btn" id="btn-resume">Resume test</button>
+  </div>
+
+  <div class="setting">
+    <span class="setting-label" id="order-label">Answer options</span>
+    <div class="seg" role="radiogroup" aria-labelledby="order-label" id="order-seg">
+      <button role="radio" data-shuffle="0">PDF order</button>
+      <button role="radio" data-shuffle="1">Shuffled</button>
+    </div>
   </div>
 
   <button class="btn" id="btn-start">Start a new test</button>
@@ -111,6 +119,10 @@
   </div>
   <div id="grid" class="grid"></div>
   <button class="btn" id="btn-palette-submit">Submit test</button>
+  <div id="allb">
+    <button class="btn fun" id="btn-allb">Mark everything B and submit</button>
+    <p class="muted small fun-note">Just for fun. Only works when options are in PDF order.</p>
+  </div>
 </dialog>
 
 <dialog id="confirm" class="sheet">
@@ -121,6 +133,8 @@
   <button class="btn ghost" data-close>Keep going</button>
 </dialog>
 
+<!-- Motion (formerly Framer Motion), vanilla build; the app works without it if the CDN fails. -->
+<script src="https://cdn.jsdelivr.net/npm/motion@12.23.24/dist/motion.js"></script>
 <script src="questions.js"></script>
 <script src="app.js"></script>
 </body>
