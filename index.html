@@ -24,16 +24,24 @@
   </header>
 
   <div class="card rules">
-    <div><b>50</b><span>questions</span></div>
-    <div><b>100</b><span>marks</span></div>
+    <div><b id="rule-count">50</b><span>questions</span></div>
+    <div><b id="rule-marks">100</b><span>marks</span></div>
     <div><b>+2</b><span>per correct</span></div>
     <div><b>0</b><span>negative</span></div>
   </div>
-  <p class="muted small">Every test draws a fresh random 50 from <span id="bank-size"></span> questions (weeks 1–12), in random order. Untimed, but your time is tracked. Your score is shown only after you submit.</p>
+  <p class="muted small">A quick test draws a fresh random 50; the full syllabus test has all <span class="bank-size"></span> questions (weeks 1–12). Either way the order is random. Untimed, but your time is tracked. Your score is shown only after you submit.</p>
 
   <div id="resume" class="card resume" hidden>
     <p><b>You have a test in progress</b><br><span id="resume-info" class="muted small"></span></p>
     <button class="btn" id="btn-resume">Resume test</button>
+  </div>
+
+  <div class="setting">
+    <span class="setting-label" id="size-label">Test length</span>
+    <div class="seg" role="radiogroup" aria-labelledby="size-label" id="size-seg">
+      <button role="radio" data-size="50">50 questions</button>
+      <button role="radio" data-size="all">All <span class="bank-size"></span></button>
+    </div>
   </div>
 
   <div class="setting">
@@ -84,7 +92,7 @@
 <section id="results" class="wrap screen" hidden>
   <div class="card scorecard">
     <p class="eyebrow">Your score</p>
-    <p class="score"><span id="score"></span><small>/100</small></p>
+    <p class="score"><span id="score"></span><small id="score-max">/100</small></p>
     <p id="cheer" class="cheer"></p>
   </div>
 

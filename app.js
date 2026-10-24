@@ -1,4 +1,4 @@
-const N = 50, MARKS = 2;
+const QUICK = 50, MARKS = 2; // quick-test size; the full-syllabus test uses every question
 const KEY = "cogquiz.active", HIST = "cogquiz.history", LAST = "cogquiz.last";
 const byId = Object.fromEntries(QUESTIONS.map((q) => [q.id, q]));
 const LETTERS = "ABCD";
@@ -58,31 +58,35 @@ function show(id) {
 /* ---------- Home ---------- */
 
 function renderHome() {
-  $("#bank-size").textContent = QUESTIONS.length;
+  for (const el of document.querySelectorAll(".bank-size")) el.textContent = QUESTIONS.length;
   const active = load(KEY, null);
   $("#resume").hidden = !active;
   if (active) {
     const done = active.answers.filter((a) => a !== null).length;
-    $("#resume-info").textContent = `${done} of ${N} answered · ${clock(sum(active.times))} spent`;
+    $("#resume-info").textContent = `${done} of ${active.items.length} answered · ${clock(sum(active.times))} spent`;
   }
   $("#btn-start").textContent = active ? "Discard and start new" : "Start a new test";
   $("#btn-start").classList.toggle("ghost", !!active);
   $("#btn-last").hidden = !load(LAST, null);
-  renderOrderPref();
+  renderPrefs();
 
   const hist = load(HIST, []);
   $("#history").hidden = !hist.length;
   $("#history ul").innerHTML = hist
-    .map((h) => `<li><span><b>${h.score}</b><span class="muted">/100</span></span>
+    .map((h) => `<li><span><b>${h.score}</b><span class="muted">/${h.max || 100}</span></span>
       <span class="muted small">${new Date(h.date).toLocaleDateString(undefined, { day: "numeric", month: "short" })} · ${clock(h.timeMs)}</span></li>`)
     .join("");
   show("home");
 }
 
-const SHUF = "cogquiz.shuffle";
-function renderOrderPref() {
-  const on = load(SHUF, false);
+const SHUF = "cogquiz.shuffle", SIZE = "cogquiz.size";
+const testSize = () => (load(SIZE, "50") === "all" ? QUESTIONS.length : QUICK);
+function renderPrefs() {
+  const on = load(SHUF, false), size = load(SIZE, "50");
   for (const b of $("#order-seg").children) b.setAttribute("aria-checked", (b.dataset.shuffle === "1") === on);
+  for (const b of $("#size-seg").children) b.setAttribute("aria-checked", b.dataset.size === size);
+  $("#rule-count").textContent = testSize();
+  $("#rule-marks").textContent = testSize() * MARKS;
 }
 
 /* ---------- Test ---------- */
@@ -92,13 +96,14 @@ const isPdfOrder = (test) => test.items.every((it) => it.order.join() === "0,1,2
 
 function newTest() {
   if (load(KEY, null) && !confirm("Discard the test in progress?")) return;
-  const ids = shuffle(QUESTIONS.map((q) => q.id)).slice(0, N);
+  const n = testSize();
+  const ids = shuffle(QUESTIONS.map((q) => q.id)).slice(0, n);
   const shuffled = load(SHUF, false);
   t = {
     items: ids.map((id) => ({ id, order: shuffled ? shuffle([0, 1, 2, 3]) : [0, 1, 2, 3] })),
-    answers: Array(N).fill(null), // original option index, so scoring ignores any shuffle
-    marked: Array(N).fill(false),
-    times: Array(N).fill(0),
+    answers: Array(n).fill(null), // original option index, so scoring ignores any shuffle
+    marked: Array(n).fill(false),
+    times: Array(n).fill(0),
     cur: 0,
   };
   save(KEY, t);
@@ -131,7 +136,7 @@ document.addEventListener("visibilitychange", () => {
 });
 
 function go(i) {
-  if (i < 0 || i >= N) return;
+  if (i < 0 || i >= t.items.length) return;
   commit();
   const dir = Math.sign(i - t.cur);
   t.cur = i;
@@ -142,11 +147,11 @@ function go(i) {
 
 // dir: 1 = slide in from the right, -1 = from the left, omitted = no entrance animation.
 function renderQ(dir) {
-  const item = t.items[t.cur], q = byId[item.id];
+  const item = t.items[t.cur], q = byId[item.id], n = t.items.length;
   const answered = t.answers.filter((a) => a !== null).length;
-  $("#counter").textContent = `Q ${t.cur + 1} / ${N}`;
+  $("#counter").textContent = `Q ${t.cur + 1} / ${n}`;
   $("#timer").textContent = clock(sum(t.times));
-  $("#progress-fill").style.width = `${(answered / N) * 100}%`;
+  $("#progress-fill").style.width = `${(answered / n) * 100}%`;
   $("#qtext").textContent = q.q;
   $("#options").innerHTML = item.order
     .map((o, pos) => `<button class="opt" role="radio" data-o="${o}" aria-checked="${t.answers[t.cur] === o}">
@@ -156,7 +161,7 @@ function renderQ(dir) {
   $("#btn-mark").setAttribute("aria-pressed", t.marked[t.cur]);
   $("#btn-mark").textContent = t.marked[t.cur] ? "Marked" : "Mark";
   $("#btn-prev").disabled = t.cur === 0;
-  $("#btn-next").textContent = t.cur === N - 1 ? "Finish" : "Next";
+  $("#btn-next").textContent = t.cur === n - 1 ? "Finish" : "Next";
   if (dir) anim([$("#qtext"), ...$("#options").children], { opacity: [0, 1], x: [dir * 28, 0] }, { delay: stagger(0.035) });
 }
 
@@ -195,10 +200,11 @@ function openPalette() {
 
 function openConfirm() {
   const answered = t.answers.filter((a) => a !== null).length, marked = t.marked.filter(Boolean).length;
+  const left = t.items.length - answered;
   $("#confirm-counts").innerHTML = `<div><b>${answered}</b><span>answered</span></div>
-    <div><b>${N - answered}</b><span>not answered</span></div><div><b>${marked}</b><span>marked</span></div>`;
-  $("#confirm-note").textContent = N - answered
-    ? `${N - answered} unanswered question${N - answered > 1 ? "s" : ""} will get 0 marks. You can't change answers after submitting.`
+    <div><b>${left}</b><span>not answered</span></div><div><b>${marked}</b><span>marked</span></div>`;
+  $("#confirm-note").textContent = left
+    ? `${left} unanswered question${left > 1 ? "s" : ""} will get 0 marks. You can't change answers after submitting.`
     : "You can't change answers after submitting.";
   openSheet($("#confirm"));
 }
@@ -209,7 +215,8 @@ function finish() {
   const res = { date: Date.now(), items: t.items, answers: t.answers, marked: t.marked, times: t.times };
   const correct = res.items.filter((it, i) => res.answers[i] === byId[it.id].answer).length;
   save(LAST, res);
-  save(HIST, [{ date: res.date, score: correct * MARKS, timeMs: sum(res.times) }, ...load(HIST, [])].slice(0, 10));
+  const entry = { date: res.date, score: correct * MARKS, max: res.items.length * MARKS, timeMs: sum(res.times) };
+  save(HIST, [entry, ...load(HIST, [])].slice(0, 10));
   drop(KEY);
   t = null;
   renderResults(res);
@@ -227,19 +234,20 @@ function renderResults(r) {
   });
   const count = (s) => rows.filter((x) => x.status === s).length;
   const ok = count("ok"), bad = count("bad"), skip = count("skip");
-  const total = sum(r.times), score = ok * MARKS;
+  const total = sum(r.times), score = ok * MARKS, pct = (ok / rows.length) * 100;
 
   $("#score").textContent = score;
+  $("#score-max").textContent = `/${rows.length * MARKS}`;
   $("#cheer").textContent =
-    score >= 80 ? "Excellent! You really know this material." :
-    score >= 60 ? "Good going! A little more revision and you're there." :
-    score >= 40 ? "Solid start. Review the misses below and go again." :
+    pct >= 80 ? "Excellent! You really know this material." :
+    pct >= 60 ? "Good going! A little more revision and you're there." :
+    pct >= 40 ? "Solid start. Review the misses below and go again." :
     "Every attempt helps. Go through the explanations below and try again.";
 
   $("#stats").innerHTML = [
     ["ok", ok, "correct"], ["bad", bad, "incorrect"], ["", skip, "not answered"],
     ["", ok + bad ? `${Math.round((ok / (ok + bad)) * 100)}%` : "–", "accuracy"],
-    ["", clock(total), "total time"], ["", dur(total / N), "avg / question"],
+    ["", clock(total), "total time"], ["", dur(total / rows.length), "avg / question"],
   ].map(([c, v, l]) => `<div class="stat ${c}"><b>${v}</b><span>${l}</span></div>`).join("");
 
   // Week breakdown; unanswered counts as not correct.
@@ -344,15 +352,22 @@ $("#btn-resume").onclick = () => { t = load(KEY, null); if (t) startTest(); };
 $("#btn-last").onclick = () => renderResults(load(LAST, null));
 $("#btn-home").onclick = renderHome;
 $("#btn-prev").onclick = () => go(t.cur - 1);
-$("#btn-next").onclick = () => (t.cur === N - 1 ? openConfirm() : go(t.cur + 1));
+$("#btn-next").onclick = () => (t.cur === t.items.length - 1 ? openConfirm() : go(t.cur + 1));
 $("#btn-mark").onclick = () => { t.marked[t.cur] = !t.marked[t.cur]; save(KEY, t); renderQ(); anim($("#btn-mark"), { scale: [0.92, 1] }, { bounce: 0.5 }); };
 $("#btn-allb").onclick = allB;
 $("#order-seg").onclick = (e) => {
   const b = e.target.closest("button");
   if (!b) return;
   save(SHUF, b.dataset.shuffle === "1");
-  renderOrderPref();
+  renderPrefs();
   anim(b, { scale: [0.94, 1] }, { bounce: 0.4 });
+};
+$("#size-seg").onclick = (e) => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  save(SIZE, b.dataset.size);
+  renderPrefs();
+  anim([b, $("#rule-count"), $("#rule-marks")], { scale: [0.94, 1] }, { bounce: 0.4 });
 };
 $("#btn-clear").onclick = () => choose(null);
 $("#btn-palette").onclick = openPalette;
